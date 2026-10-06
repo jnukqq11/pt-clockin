@@ -3,89 +3,133 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>PT 打卡助理</title>
-  <link rel="manifest" href="manifest.json">
-  <meta name="theme-color" content="#2563eb">
+  <title>工時日誌 & 打卡助理</title>
   <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <style>
+    body { background-color: #0f172a; color: #f8fafc; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    .glass-card { background: rgba(30, 41, 59, 0.7); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.08); }
+    .calendar-day { aspect-ratio: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; border-radius: 0.75rem; transition: all 0.2s; }
+  </style>
 </head>
-<body class="bg-slate-100 min-h-screen flex flex-col items-center p-4">
+<body class="min-h-screen pb-10 flex flex-col items-center p-4">
 
-  <div class="w-full max-w-md bg-white rounded-2xl shadow-xl p-6 space-y-6 mt-4">
-    <!-- 標題與時薪設定 -->
-    <div class="flex justify-between items-center border-b pb-4">
-      <h1 class="text-xl font-bold text-slate-800">⏱️ PT 打卡計數器</h1>
-      <div class="flex items-center space-x-1">
-        <span class="text-xs text-slate-500">時薪 $</span>
-        <input id="rateInput" type="number" value="190" onchange="updateRate()" 
-               class="w-16 border rounded px-2 py-1 text-sm font-semibold text-right">
+  <div class="w-full max-w-md space-y-4">
+    <!-- Header -->
+    <div class="flex justify-between items-center py-2 px-1">
+      <div>
+        <h1 class="text-xl font-black text-blue-400 tracking-wide flex items-center gap-2">
+          <i data-lucide="clock" class="w-6 h-6"></i> 工時日誌
+        </h1>
+        <p class="text-xs text-slate-400">日薪 $2,000 (以 8hr 比例計算)</p>
+      </div>
+      <button onclick="clearHistory()" class="text-xs text-rose-400 hover:text-rose-300 flex items-center gap-1">
+        <i data-lucide="trash-2" class="w-3.5 h-3.5"></i> 清空
+      </button>
+    </div>
+
+    <!-- 即時計時主卡片 -->
+    <div class="glass-card rounded-3xl p-6 text-center shadow-2xl relative overflow-hidden">
+      <div id="statusBadge" class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-slate-800 text-slate-400 mb-3">
+        <span class="w-2 h-2 rounded-full bg-slate-500"></span> 尚未上班
+      </div>
+      
+      <div id="timer" class="text-5xl font-black tracking-tight text-white my-2 font-mono">00:00:00</div>
+      <p id="todayTotalText" class="text-xs text-slate-400 mt-1">今日累計：0 小時</p>
+
+      <button id="clockBtn" onclick="toggleClock()" 
+              class="w-full mt-5 py-4 rounded-2xl text-white font-bold text-base shadow-lg transition-all active:scale-95 bg-blue-600 hover:bg-blue-500 flex items-center justify-center gap-2">
+        <i data-lucide="play" class="w-5 h-5 fill-current"></i> 上班打卡
+      </button>
+    </div>
+
+    <!-- 當月統計卡片 -->
+    <div class="glass-card rounded-2xl p-4 flex justify-between items-center">
+      <div>
+        <span class="text-xs text-slate-400 block mb-1" id="currentMonthTitle">本月累積統計</span>
+        <div class="text-2xl font-bold text-emerald-400" id="monthTotalHours">0.0 <span class="text-xs text-slate-300">小時</span></div>
+      </div>
+      <div class="text-right">
+        <span class="text-xs text-slate-400 block mb-1">當月預算結算</span>
+        <div class="text-xl font-bold text-amber-400" id="monthTotalSalary">$0</div>
       </div>
     </div>
 
-    <!-- 即時狀態 display -->
-    <div class="text-center py-4 bg-slate-50 rounded-xl border border-slate-200">
-      <div id="statusBadge" class="inline-block px-3 py-1 rounded-full text-xs font-semibold bg-slate-200 text-slate-600 mb-2">
-        尚未上班
+    <!-- 月曆控制項 -->
+    <div class="glass-card rounded-3xl p-5 shadow-xl">
+      <div class="flex justify-between items-center mb-4">
+        <button onclick="changeMonth(-1)" class="p-2 hover:bg-slate-800 rounded-xl"><i data-lucide="chevron-left" class="w-5 h-5"></i></button>
+        <span id="calendarMonthLabel" class="font-bold text-base text-slate-200">2026 年 10 月</span>
+        <button onclick="changeMonth(1)" class="p-2 hover:bg-slate-800 rounded-xl"><i data-lucide="chevron-right" class="w-5 h-5"></i></button>
       </div>
-      <div id="timer" class="text-4xl font-extrabold text-slate-800 tracking-wider">00:00:00</div>
-      <div id="salary" class="text-sm font-semibold text-emerald-600 mt-2">預計薪資：$0 元</div>
+
+      <!-- 星期表頭 -->
+      <div class="grid grid-cols-7 gap-1 text-center text-xs font-semibold text-slate-500 mb-2">
+        <div>日</div><div>一</div><div>二</div><div>三</div><div>四</div><div>五</div><div>六</div>
+      </div>
+
+      <!-- 月曆日期網格 -->
+      <div id="calendarGrid" class="grid grid-cols-7 gap-1"></div>
     </div>
 
-    <!-- 打卡按鈕 -->
-    <button id="clockBtn" onclick="toggleClock()" 
-            class="w-full py-4 rounded-xl text-white font-bold text-lg shadow-md transition-all active:scale-95 bg-blue-600 hover:bg-blue-700">
-      上班打卡
-    </button>
-
-    <!-- 歷史紀錄 -->
-    <div>
-      <div class="flex justify-between items-center mb-3">
-        <h2 class="text-sm font-bold text-slate-700">出勤紀錄</h2>
-        <button onclick="clearHistory()" class="text-xs text-red-500 hover:underline">清空紀錄</button>
-      </div>
-      <div id="historyList" class="space-y-2 max-h-60 overflow-y-auto pr-1"></div>
+    <!-- 所選日期的明細紀錄 -->
+    <div class="glass-card rounded-2xl p-4">
+      <h3 id="selectedDateTitle" class="text-xs font-bold text-slate-400 mb-3">打卡紀錄</h3>
+      <div id="dayLogList" class="space-y-2 text-xs"></div>
     </div>
   </div>
 
   <script>
-    let hourlyRate = Number(localStorage.getItem('pt_rate')) || 190;
-    document.getElementById('rateInput').value = hourlyRate;
+    const DAILY_RATE = 2000;
+    const HOURLY_RATE = DAILY_RATE / 8; // 250 元/hr
 
     let startTime = localStorage.getItem('pt_startTime') ? new Date(localStorage.getItem('pt_startTime')) : null;
     let timerInterval = null;
+    let currentViewDate = new Date();
+    let selectedDateStr = formatDate(new Date());
 
-    function updateRate() {
-      hourlyRate = Number(document.getElementById('rateInput').value) || 190;
-      localStorage.setItem('pt_rate', hourlyRate);
-      if (startTime) updateDisplay();
+    function formatDate(d) {
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      return `${y}-${m}-${day}`;
     }
 
     function updateDisplay() {
-      if (!startTime) {
-        document.getElementById('statusBadge').innerText = "尚未上班";
-        document.getElementById('statusBadge').className = "inline-block px-3 py-1 rounded-full text-xs font-semibold bg-slate-200 text-slate-600 mb-2";
-        document.getElementById('timer').innerText = "00:00:00";
-        document.getElementById('salary').innerText = "預計薪資：$0 元";
-        document.getElementById('clockBtn').innerText = "上班打卡";
-        document.getElementById('clockBtn').className = "w-full py-4 rounded-xl text-white font-bold text-lg shadow-md transition-all active:scale-95 bg-blue-600 hover:bg-blue-700";
-        return;
-      }
-
-      const now = new Date();
-      const diffSec = Math.floor((now - startTime) / 1000);
+      const todayStr = formatDate(new Date());
+      const logs = JSON.parse(localStorage.getItem('pt_logs') || '[]');
       
-      const hrs = String(Math.floor(diffSec / 3600)).padStart(2, '0');
-      const mins = String(Math.floor((diffSec % 3600) / 60)).padStart(2, '0');
-      const secs = String(diffSec % 60).padStart(2, '0');
+      // 計算今日已完成的時數
+      let todayFinishedHours = logs
+        .filter(l => l.date === todayStr)
+        .reduce((sum, l) => sum + Number(l.hours), 0);
 
-      const hoursWorked = diffSec / 3600;
-      const salary = Math.round(hoursWorked * hourlyRate);
+      if (!startTime) {
+        document.getElementById('statusBadge').innerHTML = '<span class="w-2 h-2 rounded-full bg-slate-500"></span> 尚未上班';
+        document.getElementById('statusBadge').className = "inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-slate-800 text-slate-400 mb-3";
+        document.getElementById('timer').innerText = "00:00:00";
+        document.getElementById('todayTotalText').innerText = `今日累計：${todayFinishedHours.toFixed(2)} 小時`;
+        document.getElementById('clockBtn').innerHTML = '<i data-lucide="play" class="w-5 h-5 fill-current"></i> 上班打卡';
+        document.getElementById('clockBtn').className = "w-full mt-5 py-4 rounded-2xl text-white font-bold text-base shadow-lg transition-all active:scale-95 bg-blue-600 hover:bg-blue-500 flex items-center justify-center gap-2";
+      } else {
+        const now = new Date();
+        const diffSec = Math.floor((now - startTime) / 1000);
+        const hrs = String(Math.floor(diffSec / 3600)).padStart(2, '0');
+        const mins = String(Math.floor((diffSec % 3600) / 60)).padStart(2, '0');
+        const secs = String(diffSec % 60).padStart(2, '0');
 
-      document.getElementById('statusBadge').innerText = `上班中 (${startTime.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})} 上班)`;
-      document.getElementById('statusBadge').className = "inline-block px-3 py-1 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-700 mb-2";
-      document.getElementById('timer').innerText = `${hrs}:${mins}:${secs}`;
-      document.getElementById('salary').innerText = `預計薪資：$${salary} 元`;
-      document.getElementById('clockBtn').innerText = "下班打卡";
-      document.getElementById('clockBtn').className = "w-full py-4 rounded-xl text-white font-bold text-lg shadow-md transition-all active:scale-95 bg-rose-600 hover:bg-rose-700";
+        const currentShiftHours = diffSec / 3600;
+        const totalToday = todayFinishedHours + currentShiftHours;
+
+        document.getElementById('statusBadge').innerHTML = `<span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span> 上班中 (${startTime.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})})`;
+        document.getElementById('statusBadge').className = "inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-emerald-950 text-emerald-300 border border-emerald-800/50 mb-3";
+        document.getElementById('timer').innerText = `${hrs}:${mins}:${secs}`;
+        document.getElementById('todayTotalText').innerText = `今日累計：${totalToday.toFixed(2)} 小時`;
+        document.getElementById('clockBtn').innerHTML = '<i data-lucide="square" class="w-5 h-5 fill-current"></i> 下班打卡';
+        document.getElementById('clockBtn').className = "w-full mt-5 py-4 rounded-2xl text-white font-bold text-base shadow-lg transition-all active:scale-95 bg-rose-600 hover:bg-rose-500 flex items-center justify-center gap-2";
+      }
+      lucide.createIcons();
     }
 
     function toggleClock() {
@@ -97,13 +141,12 @@
         const endTime = new Date();
         const diffSec = Math.floor((endTime - startTime) / 1000);
         const hoursWorked = (diffSec / 3600).toFixed(2);
-        const salary = Math.round(hoursWorked * hourlyRate);
 
         const record = {
-          date: startTime.toLocaleDateString(),
+          id: Date.now(),
+          date: formatDate(startTime),
           time: `${startTime.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})} ~ ${endTime.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}`,
-          hours: hoursWorked,
-          salary: salary
+          hours: hoursWorked
         };
 
         let logs = JSON.parse(localStorage.getItem('pt_logs') || '[]');
@@ -113,39 +156,111 @@
         localStorage.removeItem('pt_startTime');
         startTime = null;
         clearInterval(timerInterval);
-        renderLogs();
       }
       updateDisplay();
+      renderCalendar();
+      renderDayLogs(selectedDateStr);
     }
 
-    function renderLogs() {
+    function renderCalendar() {
+      const year = currentViewDate.getFullYear();
+      const month = currentViewDate.getMonth();
+      document.getElementById('calendarMonthLabel').innerText = `${year} 年 ${month + 1} 月`;
+      document.getElementById('currentMonthTitle').innerText = `${month + 1} 月累積總工時`;
+
+      const firstDay = new Date(year, month, 1).getDay();
+      const daysInMonth = new Date(year, month + 1, 0).getDate();
       const logs = JSON.parse(localStorage.getItem('pt_logs') || '[]');
-      const container = document.getElementById('historyList');
-      if (logs.length === 0) {
-        container.innerHTML = '<div class="text-center text-xs text-slate-400 py-4">暫無打卡紀錄</div>';
+
+      // 當月統計
+      const currentMonthPrefix = `${year}-${String(month + 1).padStart(2, '0')}`;
+      const monthLogs = logs.filter(l => l.date.startsWith(currentMonthPrefix));
+      const monthHours = monthLogs.reduce((sum, l) => sum + Number(l.hours), 0);
+      const monthSalary = Math.round(monthHours * HOURLY_RATE);
+
+      document.getElementById('monthTotalHours').innerHTML = `${monthHours.toFixed(2)} <span class="text-xs text-slate-300">小時</span>`;
+      document.getElementById('monthTotalSalary').innerText = `$${monthSalary.toLocaleString()}`;
+
+      const grid = document.getElementById('calendarGrid');
+      grid.innerHTML = '';
+
+      // 空白填補
+      for (let i = 0; i < firstDay; i++) {
+        grid.innerHTML += `<div class="calendar-day text-slate-700"></div>`;
+      }
+
+      // 渲染日期
+      for (let day = 1; day <= daysInMonth; day++) {
+        const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+        const dayLogs = logs.filter(l => l.date === dateStr);
+        const dayTotal = dayLogs.reduce((sum, l) => sum + Number(l.hours), 0);
+
+        const isSelected = dateStr === selectedDateStr;
+        const isToday = dateStr === formatDate(new Date());
+
+        let bgClass = "hover:bg-slate-800 text-slate-300";
+        if (isSelected) bgClass = "bg-blue-600 text-white font-bold ring-2 ring-blue-400";
+        else if (isToday) bgClass = "bg-slate-800 text-blue-400 font-bold border border-blue-500/30";
+
+        let dotHtml = dayTotal > 0 
+          ? `<span class="mt-1 text-[9px] px-1 bg-emerald-500/20 text-emerald-300 rounded font-normal">${dayTotal.toFixed(1)}h</span>` 
+          : `<span class="h-3"></span>`;
+
+        grid.innerHTML += `
+          <div onclick="selectDate('${dateStr}')" class="calendar-day cursor-pointer text-xs ${bgClass}">
+            <span>${day}</span>
+            ${dotHtml}
+          </div>
+        `;
+      }
+    }
+
+    function selectDate(dateStr) {
+      selectedDateStr = dateStr;
+      renderCalendar();
+      renderDayLogs(dateStr);
+    }
+
+    function renderDayLogs(dateStr) {
+      document.getElementById('selectedDateTitle').innerText = `${dateStr} 打卡明細`;
+      const logs = JSON.parse(localStorage.getItem('pt_logs') || '[]');
+      const dayLogs = logs.filter(l => l.date === dateStr);
+      const container = document.getElementById('dayLogList');
+
+      if (dayLogs.length === 0) {
+        container.innerHTML = `<div class="text-slate-500 text-center py-3">當天尚無紀錄</div>`;
         return;
       }
-      container.innerHTML = logs.map(log => `
-        <div class="flex justify-between items-center p-3 bg-slate-50 border border-slate-200 rounded-lg text-xs">
+
+      container.innerHTML = dayLogs.map(log => `
+        <div class="flex justify-between items-center p-2.5 bg-slate-800/60 rounded-xl border border-slate-700/50">
           <div>
-            <div class="font-bold text-slate-700">${log.date}</div>
-            <div class="text-slate-500">${log.time} (${log.hours} 小時)</div>
+            <div class="font-semibold text-slate-200">${log.time}</div>
           </div>
-          <div class="font-bold text-emerald-600 text-sm">$${log.salary}</div>
+          <div class="font-bold text-emerald-400">${log.hours} 小時</div>
         </div>
       `).join('');
+    }
+
+    function changeMonth(offset) {
+      currentViewDate.setMonth(currentViewDate.getMonth() + offset);
+      renderCalendar();
     }
 
     function clearHistory() {
       if (confirm("確定要清空所有紀錄嗎？")) {
         localStorage.removeItem('pt_logs');
-        renderLogs();
+        updateDisplay();
+        renderCalendar();
+        renderDayLogs(selectedDateStr);
       }
     }
 
     if (startTime) timerInterval = setInterval(updateDisplay, 1000);
     updateDisplay();
-    renderLogs();
+    renderCalendar();
+    renderDayLogs(selectedDateStr);
+    lucide.createIcons();
   </script>
 </body>
 </html>
