@@ -26,7 +26,7 @@
         <h1 class="text-xl font-black text-blue-400 tracking-wide flex items-center gap-2">
           <i data-lucide="clock" class="w-6 h-6"></i> 工時日誌
         </h1>
-        <p class="text-xs text-slate-400">日薪 $2,000 (以 8hr 比例計算)</p>
+        <p class="text-xs text-slate-400">日薪 $2,000 | 午休 12:00~13:30 自動扣除</p>
       </div>
       <div class="flex gap-2">
         <button onclick="openModal()" class="text-xs bg-blue-600/80 hover:bg-blue-600 text-white px-2.5 py-1.5 rounded-lg flex items-center gap-1">
@@ -45,7 +45,7 @@
       </div>
       
       <div id="timer" class="text-5xl font-black tracking-tight text-white my-2 font-mono">00:00:00</div>
-      <p id="todayTotalText" class="text-xs text-slate-400 mt-1">今日累計：0 小時</p>
+      <p id="todayTotalText" class="text-xs text-slate-400 mt-1">今日扣除午休後計薪：0 小時</p>
 
       <button id="clockBtn" onclick="toggleClock()" 
               class="w-full mt-5 py-4 rounded-2xl text-white font-bold text-base shadow-lg transition-all active:scale-95 bg-blue-600 hover:bg-blue-500 flex items-center justify-center gap-2">
@@ -56,11 +56,11 @@
     <!-- 當月統計卡片 -->
     <div class="glass-card rounded-2xl p-4 flex justify-between items-center">
       <div>
-        <span class="text-xs text-slate-400 block mb-1" id="currentMonthTitle">本月累積統計</span>
+        <span class="text-xs text-slate-400 block mb-1" id="currentMonthTitle">本月累積淨工時</span>
         <div class="text-2xl font-bold text-emerald-400" id="monthTotalHours">0.0 <span class="text-xs text-slate-300">小時</span></div>
       </div>
       <div class="text-right">
-        <span class="text-xs text-slate-400 block mb-1">當月預算結算</span>
+        <span class="text-xs text-slate-400 block mb-1">當月預估薪資</span>
         <div class="text-xl font-bold text-amber-400" id="monthTotalSalary">$0</div>
       </div>
     </div>
@@ -110,6 +110,7 @@
             <input type="time" id="manualEndTime" value="18:00" class="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-slate-200">
           </div>
         </div>
+        <p class="text-[10px] text-slate-400">系統將自動扣除跨越 12:00~13:30 之午休時數</p>
       </div>
 
       <div class="flex gap-2 pt-2">
@@ -121,7 +122,7 @@
 
   <script>
     const DAILY_RATE = 2000;
-    const HOURLY_RATE = DAILY_RATE / 8;
+    const HOURLY_RATE = DAILY_RATE / 8; // 250 元/hr
 
     let startTime = localStorage.getItem('pt_startTime') ? new Date(localStorage.getItem('pt_startTime')) : null;
     let timerInterval = null;
@@ -133,6 +134,31 @@
       const m = String(d.getMonth() + 1).padStart(2, '0');
       const day = String(d.getDate()).padStart(2, '0');
       return `${y}-${m}-${day}`;
+    }
+
+    // 計算扣除午休 (12:00~13:30) 後的實際工時 (小時)
+    function calculateNetHours(startDt, endDt) {
+      if (endDt <= startDt) return 0;
+
+      let totalMs = endDt - startDt;
+
+      // 建立午休時間範圍 (12:00 - 13:30)
+      let lunchStart = new Date(startDt);
+      lunchStart.setHours(12, 0, 0, 0);
+      let lunchEnd = new Date(startDt);
+      lunchEnd.setHours(13, 30, 0, 0);
+
+      // 計算與午休時間的重疊部分
+      let overlapStart = new Date(Math.max(startDt.getTime(), lunchStart.getTime()));
+      let overlapEnd = new Date(Math.min(endDt.getTime(), lunchEnd.getTime()));
+
+      let deductionMs = 0;
+      if (overlapEnd > overlapStart) {
+        deductionMs = overlapEnd - overlapStart;
+      }
+
+      let netMs = Math.max(0, totalMs - deductionMs);
+      return (netMs / (1000 * 60 * 60));
     }
 
     function showToast(msg) {
@@ -153,7 +179,7 @@
         document.getElementById('statusBadge').innerHTML = '<span class="w-2 h-2 rounded-full bg-slate-500"></span> 尚未上班';
         document.getElementById('statusBadge').className = "inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-slate-800 text-slate-400 mb-3";
         document.getElementById('timer').innerText = "00:00:00";
-        document.getElementById('todayTotalText').innerText = `今日累計：${todayFinishedHours.toFixed(2)} 小時`;
+        document.getElementById('todayTotalText').innerText = `今日淨工時：${todayFinishedHours.toFixed(2)} 小時`;
         document.getElementById('clockBtn').innerHTML = '<i data-lucide="play" class="w-5 h-5 fill-current"></i> 上班打卡';
         document.getElementById('clockBtn').className = "w-full mt-5 py-4 rounded-2xl text-white font-bold text-base shadow-lg transition-all active:scale-95 bg-blue-600 hover:bg-blue-500 flex items-center justify-center gap-2";
       } else {
@@ -163,13 +189,13 @@
         const mins = String(Math.floor((diffSec % 3600) / 60)).padStart(2, '0');
         const secs = String(diffSec % 60).padStart(2, '0');
 
-        const currentShiftHours = diffSec / 3600;
-        const totalToday = todayFinishedHours + currentShiftHours;
+        const currentShiftNetHours = calculateNetHours(startTime, now);
+        const totalToday = todayFinishedHours + currentShiftNetHours;
 
         document.getElementById('statusBadge').innerHTML = `<span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span> 上班中 (${startTime.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})})`;
         document.getElementById('statusBadge').className = "inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-emerald-950 text-emerald-300 border border-emerald-800/50 mb-3";
         document.getElementById('timer').innerText = `${hrs}:${mins}:${secs}`;
-        document.getElementById('todayTotalText').innerText = `今日累計：${totalToday.toFixed(2)} 小時`;
+        document.getElementById('todayTotalText').innerText = `今日淨工時：${totalToday.toFixed(2)} 小時 (已扣午休)`;
         document.getElementById('clockBtn').innerHTML = '<i data-lucide="square" class="w-5 h-5 fill-current"></i> 下班打卡';
         document.getElementById('clockBtn').className = "w-full mt-5 py-4 rounded-2xl text-white font-bold text-base shadow-lg transition-all active:scale-95 bg-rose-600 hover:bg-rose-500 flex items-center justify-center gap-2";
       }
@@ -184,14 +210,13 @@
         if (silent) showToast("🟢 上班打卡成功！");
       } else {
         const endTime = new Date();
-        const diffSec = Math.floor((endTime - startTime) / 1000);
-        const hoursWorked = (diffSec / 3600).toFixed(2);
+        const netHours = calculateNetHours(startTime, endTime).toFixed(2);
 
         const record = {
           id: Date.now(),
           date: formatDate(startTime),
           time: `${startTime.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})} ~ ${endTime.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}`,
-          hours: hoursWorked
+          hours: netHours
         };
 
         let logs = JSON.parse(localStorage.getItem('pt_logs') || '[]');
@@ -228,9 +253,9 @@
 
       const startDt = new Date(`${dateVal}T${startVal}`);
       const endDt = new Date(`${dateVal}T${endVal}`);
-      const diffHrs = ((endDt - startDt) / (1000 * 60 * 60)).toFixed(2);
+      const netHours = calculateNetHours(startDt, endDt).toFixed(2);
 
-      if (diffHrs <= 0) {
+      if (endDt <= startDt) {
         alert("下班時間必須晚於上班時間！");
         return;
       }
@@ -239,7 +264,7 @@
         id: Date.now(),
         date: dateVal,
         time: `${startVal} ~ ${endVal}`,
-        hours: diffHrs
+        hours: netHours
       };
 
       let logs = JSON.parse(localStorage.getItem('pt_logs') || '[]');
@@ -268,7 +293,7 @@
       const year = currentViewDate.getFullYear();
       const month = currentViewDate.getMonth();
       document.getElementById('calendarMonthLabel').innerText = `${year} 年 ${month + 1} 月`;
-      document.getElementById('currentMonthTitle').innerText = `${month + 1} 月累積總工時`;
+      document.getElementById('currentMonthTitle').innerText = `${month + 1} 月累積淨工時`;
 
       const firstDay = new Date(year, month, 1).getDay();
       const daysInMonth = new Date(year, month + 1, 0).getDate();
@@ -359,12 +384,11 @@
       }
     }
 
-    // 檢查網址是否有捷徑自動觸發參數 (?action=toggle)
+    // 檢查捷徑自動觸發
     window.addEventListener('DOMContentLoaded', () => {
       const urlParams = new URLSearchParams(window.location.search);
       if (urlParams.get('action') === 'toggle') {
         toggleClock(true);
-        // 清除網址參數，避免刷頁重複打卡
         window.history.replaceState({}, document.title, window.location.pathname);
       }
     });
