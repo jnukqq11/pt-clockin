@@ -219,4 +219,208 @@
         const currentShiftNetHours = calculateNetHours(startTime, now);
         const totalToday = todayFinishedHours + currentShiftNetHours;
 
-        document.getElementById('statusBadge').innerHTML
+        document.getElementById('statusBadge').innerHTML = `<span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span> 上班中 (${startTime.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})})`;
+        document.getElementById('statusBadge').className = "inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-emerald-950 text-emerald-300 border border-emerald-800/50 mb-3";
+        document.getElementById('timer').innerText = `${hrs}:${mins}:${secs}`;
+        document.getElementById('todayTotalText').innerText = `今日淨工時：${totalToday.toFixed(2)} 小時 (已扣午休)`;
+        document.getElementById('clockBtn').innerText = "◼ 下班打卡";
+        document.getElementById('clockBtn').className = "w-full mt-5 py-4 rounded-2xl text-white font-bold text-base shadow-lg transition-all active:scale-95 bg-rose-600 hover:bg-rose-500 flex items-center justify-center gap-2";
+      }
+    }
+
+    function toggleClock(silent = false) {
+      if (!startTime) {
+        startTime = new Date();
+        localStorage.setItem('pt_startTime', startTime.toISOString());
+        timerInterval = setInterval(updateDisplay, 1000);
+        if (silent) showToast("🟢 上班打卡成功！");
+      } else {
+        const endTime = new Date();
+        const netHours = calculateNetHours(startTime, endTime).toFixed(2);
+
+        const record = {
+          id: Date.now(),
+          date: formatDate(startTime),
+          time: `${startTime.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})} ~ ${endTime.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}`,
+          hours: netHours
+        };
+
+        let logs = JSON.parse(localStorage.getItem('pt_logs') || '[]');
+        logs.unshift(record);
+        localStorage.setItem('pt_logs', JSON.stringify(logs));
+
+        localStorage.removeItem('pt_startTime');
+        startTime = null;
+        clearInterval(timerInterval);
+        if (silent) showToast("🔴 下班打卡成功！");
+      }
+      updateDisplay();
+      renderCalendar();
+      renderDayLogs(selectedDateStr);
+    }
+
+    function openModal() {
+      document.getElementById('manualDate').value = formatDate(new Date());
+      document.getElementById('manualModal').classList.remove('hidden');
+    }
+    function closeModal() {
+      document.getElementById('manualModal').classList.add('hidden');
+    }
+    function saveManualLog() {
+      const dateVal = document.getElementById('manualDate').value;
+      const startVal = document.getElementById('manualStartTime').value;
+      const endVal = document.getElementById('manualEndTime').value;
+
+      if (!dateVal || !startVal || !endVal) {
+        alert("請完整填寫日期與時間！");
+        return;
+      }
+
+      const startDt = new Date(`${dateVal}T${startVal}`);
+      const endDt = new Date(`${dateVal}T${endVal}`);
+      const netHours = calculateNetHours(startDt, endDt).toFixed(2);
+
+      if (endDt <= startDt) {
+        alert("下班時間必須晚於上班時間！");
+        return;
+      }
+
+      const record = {
+        id: Date.now(),
+        date: dateVal,
+        time: `${startVal} ~ ${endVal}`,
+        hours: netHours
+      };
+
+      let logs = JSON.parse(localStorage.getItem('pt_logs') || '[]');
+      logs.unshift(record);
+      localStorage.setItem('pt_logs', JSON.stringify(logs));
+
+      closeModal();
+      updateDisplay();
+      renderCalendar();
+      renderDayLogs(selectedDateStr);
+      showToast("已手動補入打卡紀錄！");
+    }
+
+    function deleteLog(id) {
+      if (confirm("確定要刪除這筆紀錄嗎？")) {
+        let logs = JSON.parse(localStorage.getItem('pt_logs') || '[]');
+        logs = logs.filter(l => l.id !== id);
+        localStorage.setItem('pt_logs', JSON.stringify(logs));
+        updateDisplay();
+        renderCalendar();
+        renderDayLogs(selectedDateStr);
+      }
+    }
+
+    function renderCalendar() {
+      const year = currentViewDate.getFullYear();
+      const month = currentViewDate.getMonth();
+      document.getElementById('calendarMonthLabel').innerText = `${year} 年 ${month + 1} 月`;
+      document.getElementById('currentMonthTitle').innerText = `${month + 1} 月累積淨工時`;
+
+      const firstDay = new Date(year, month, 1).getDay();
+      const daysInMonth = new Date(year, month + 1, 0).getDate();
+      const logs = JSON.parse(localStorage.getItem('pt_logs') || '[]');
+
+      const currentMonthPrefix = `${year}-${String(month + 1).padStart(2, '0')}`;
+      const monthLogs = logs.filter(l => l.date.startsWith(currentMonthPrefix));
+      const monthHours = monthLogs.reduce((sum, l) => sum + Number(l.hours), 0);
+
+      currentCalculatedSalary = Math.round(monthHours * HOURLY_RATE);
+
+      document.getElementById('monthTotalHours').innerHTML = `${monthHours.toFixed(2)} <span class="text-xs text-slate-300">小時</span>`;
+      updateSalaryDisplay();
+
+      const grid = document.getElementById('calendarGrid');
+      grid.innerHTML = '';
+
+      for (let i = 0; i < firstDay; i++) {
+        grid.innerHTML += `<div class="calendar-day text-slate-700"></div>`;
+      }
+
+      for (let day = 1; day <= daysInMonth; day++) {
+        const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+        const dayLogs = logs.filter(l => l.date === dateStr);
+        const dayTotal = dayLogs.reduce((sum, l) => sum + Number(l.hours), 0);
+
+        const isSelected = dateStr === selectedDateStr;
+        const isToday = dateStr === formatDate(new Date());
+
+        let bgClass = "hover:bg-slate-800 text-slate-300";
+        if (isSelected) bgClass = "bg-blue-600 text-white font-bold ring-2 ring-blue-400";
+        else if (isToday) bgClass = "bg-slate-800 text-blue-400 font-bold border border-blue-500/30";
+
+        let dotHtml = dayTotal > 0 
+          ? `<span class="mt-1 text-[9px] px-1 bg-emerald-500/20 text-emerald-300 rounded font-normal">${dayTotal.toFixed(1)}h</span>` 
+          : `<span class="h-3"></span>`;
+
+        grid.innerHTML += `
+          <div onclick="selectDate('${dateStr}')" class="calendar-day cursor-pointer text-xs ${bgClass}">
+            <span>${day}</span>
+            ${dotHtml}
+          </div>
+        `;
+      }
+    }
+
+    function selectDate(dateStr) {
+      selectedDateStr = dateStr;
+      renderCalendar();
+      renderDayLogs(dateStr);
+    }
+
+    function renderDayLogs(dateStr) {
+      document.getElementById('selectedDateTitle').innerText = `${dateStr} 打卡明細`;
+      const logs = JSON.parse(localStorage.getItem('pt_logs') || '[]');
+      const dayLogs = logs.filter(l => l.date === dateStr);
+      const container = document.getElementById('dayLogList');
+
+      if (dayLogs.length === 0) {
+        container.innerHTML = `<div class="text-slate-500 text-center py-3">當天尚無紀錄</div>`;
+        return;
+      }
+
+      container.innerHTML = dayLogs.map(log => `
+        <div class="flex justify-between items-center p-2.5 bg-slate-800/60 rounded-xl border border-slate-700/50">
+          <div>
+            <div class="font-semibold text-slate-200">${log.time}</div>
+          </div>
+          <div class="flex items-center gap-3">
+            <span class="font-bold text-emerald-400">${log.hours} 小時</span>
+            <button onclick="deleteLog(${log.id})" class="text-slate-500 hover:text-rose-400 font-bold">🗑️</button>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    function changeMonth(offset) {
+      currentViewDate.setMonth(currentViewDate.getMonth() + offset);
+      renderCalendar();
+    }
+
+    function clearHistory() {
+      if (confirm("確定要清空所有紀錄嗎？")) {
+        localStorage.removeItem('pt_logs');
+        updateDisplay();
+        renderCalendar();
+        renderDayLogs(selectedDateStr);
+      }
+    }
+
+    window.addEventListener('DOMContentLoaded', () => {
+      const urlParams = new URLSearchParams(window.location.search);
+      if (urlParams.get('action') === 'toggle') {
+        toggleClock(true);
+        window.history.replaceState({}, document.title, window.location.pathname);
+      }
+    });
+
+    if (startTime) timerInterval = setInterval(updateDisplay, 1000);
+    updateDisplay();
+    renderCalendar();
+    renderDayLogs(selectedDateStr);
+  </script>
+</body>
+</html>
