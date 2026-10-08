@@ -26,7 +26,7 @@
         <h1 class="text-xl font-black text-blue-400 tracking-wide flex items-center gap-2">
           <i data-lucide="clock" class="w-6 h-6"></i> 工時日誌
         </h1>
-        <p class="text-xs text-slate-400">午休 12:00~13:30 自動扣除</p>
+        <p class="text-xs text-slate-400">日薪 $2,000 | 午休 12:00~13:30 自動扣除</p>
       </div>
       <div class="flex gap-2">
         <button onclick="openModal()" class="text-xs bg-blue-600/80 hover:bg-blue-600 text-white px-2.5 py-1.5 rounded-lg flex items-center gap-1">
@@ -60,7 +60,12 @@
         <div class="text-2xl font-bold text-emerald-400" id="monthTotalHours">0.0 <span class="text-xs text-slate-300">小時</span></div>
       </div>
       <div class="text-right">
-        <span class="text-xs text-slate-400 block mb-1">當月預估薪資</span>
+        <div class="flex items-center justify-end gap-1.5 mb-1">
+          <span class="text-xs text-slate-400">當月預估薪資</span>
+          <button onclick="toggleSalaryVisibility()" class="p-0.5 hover:bg-slate-800 rounded text-slate-400 hover:text-slate-200 transition-colors">
+            <i id="salaryEyeIcon" data-lucide="eye" class="w-3.5 h-3.5"></i>
+          </button>
+        </div>
         <div class="text-xl font-bold text-amber-400" id="monthTotalSalary">$0</div>
       </div>
     </div>
@@ -129,6 +134,9 @@
     let currentViewDate = new Date();
     let selectedDateStr = formatDate(new Date());
 
+    let isSalaryVisible = localStorage.getItem('pt_salary_visible') !== 'false';
+    let currentCalculatedSalary = 0;
+
     function formatDate(d) {
       const y = d.getFullYear();
       const m = String(d.getMonth() + 1).padStart(2, '0');
@@ -136,19 +144,15 @@
       return `${y}-${m}-${day}`;
     }
 
-    // 計算扣除午休 (12:00~13:30) 後的實際工時 (小時)
     function calculateNetHours(startDt, endDt) {
       if (endDt <= startDt) return 0;
-
       let totalMs = endDt - startDt;
 
-      // 建立午休時間範圍 (12:00 - 13:30)
       let lunchStart = new Date(startDt);
       lunchStart.setHours(12, 0, 0, 0);
       let lunchEnd = new Date(startDt);
       lunchEnd.setHours(13, 30, 0, 0);
 
-      // 計算與午休時間的重疊部分
       let overlapStart = new Date(Math.max(startDt.getTime(), lunchStart.getTime()));
       let overlapEnd = new Date(Math.min(endDt.getTime(), lunchEnd.getTime()));
 
@@ -166,6 +170,28 @@
       toast.innerText = msg;
       toast.classList.remove('opacity-0');
       setTimeout(() => toast.classList.add('opacity-0'), 2500);
+    }
+
+    function toggleSalaryVisibility() {
+      isSalaryVisible = !isSalaryVisible;
+      localStorage.setItem('pt_salary_visible', isSalaryVisible);
+      updateSalaryDisplay();
+    }
+
+    function updateSalaryDisplay() {
+      const salaryEl = document.getElementById('monthTotalSalary');
+      const eyeIconEl = document.getElementById('salaryEyeIcon');
+
+      if (!salaryEl || !eyeIconEl) return;
+
+      if (isSalaryVisible) {
+        salaryEl.innerText = `$${currentCalculatedSalary.toLocaleString()}`;
+        eyeIconEl.setAttribute('data-lucide', 'eye');
+      } else {
+        salaryEl.innerText = '••••••';
+        eyeIconEl.setAttribute('data-lucide', 'eye-off');
+      }
+      lucide.createIcons();
     }
 
     function updateDisplay() {
@@ -228,176 +254,3 @@
         clearInterval(timerInterval);
         if (silent) showToast("🔴 下班打卡成功！");
       }
-      updateDisplay();
-      renderCalendar();
-      renderDayLogs(selectedDateStr);
-    }
-
-    /* 手動補打卡邏輯 */
-    function openModal() {
-      document.getElementById('manualDate').value = formatDate(new Date());
-      document.getElementById('manualModal').classList.remove('hidden');
-    }
-    function closeModal() {
-      document.getElementById('manualModal').classList.add('hidden');
-    }
-    function saveManualLog() {
-      const dateVal = document.getElementById('manualDate').value;
-      const startVal = document.getElementById('manualStartTime').value;
-      const endVal = document.getElementById('manualEndTime').value;
-
-      if (!dateVal || !startVal || !endVal) {
-        alert("請完整填寫日期與時間！");
-        return;
-      }
-
-      const startDt = new Date(`${dateVal}T${startVal}`);
-      const endDt = new Date(`${dateVal}T${endVal}`);
-      const netHours = calculateNetHours(startDt, endDt).toFixed(2);
-
-      if (endDt <= startDt) {
-        alert("下班時間必須晚於上班時間！");
-        return;
-      }
-
-      const record = {
-        id: Date.now(),
-        date: dateVal,
-        time: `${startVal} ~ ${endVal}`,
-        hours: netHours
-      };
-
-      let logs = JSON.parse(localStorage.getItem('pt_logs') || '[]');
-      logs.unshift(record);
-      localStorage.setItem('pt_logs', JSON.stringify(logs));
-
-      closeModal();
-      updateDisplay();
-      renderCalendar();
-      renderDayLogs(selectedDateStr);
-      showToast("已手動補入打卡紀錄！");
-    }
-
-    function deleteLog(id) {
-      if (confirm("確定要刪除這筆紀錄嗎？")) {
-        let logs = JSON.parse(localStorage.getItem('pt_logs') || '[]');
-        logs = logs.filter(l => l.id !== id);
-        localStorage.setItem('pt_logs', JSON.stringify(logs));
-        updateDisplay();
-        renderCalendar();
-        renderDayLogs(selectedDateStr);
-      }
-    }
-
-    function renderCalendar() {
-      const year = currentViewDate.getFullYear();
-      const month = currentViewDate.getMonth();
-      document.getElementById('calendarMonthLabel').innerText = `${year} 年 ${month + 1} 月`;
-      document.getElementById('currentMonthTitle').innerText = `${month + 1} 月累積淨工時`;
-
-      const firstDay = new Date(year, month, 1).getDay();
-      const daysInMonth = new Date(year, month + 1, 0).getDate();
-      const logs = JSON.parse(localStorage.getItem('pt_logs') || '[]');
-
-      const currentMonthPrefix = `${year}-${String(month + 1).padStart(2, '0')}`;
-      const monthLogs = logs.filter(l => l.date.startsWith(currentMonthPrefix));
-      const monthHours = monthLogs.reduce((sum, l) => sum + Number(l.hours), 0);
-      const monthSalary = Math.round(monthHours * HOURLY_RATE);
-
-      document.getElementById('monthTotalHours').innerHTML = `${monthHours.toFixed(2)} <span class="text-xs text-slate-300">小時</span>`;
-      document.getElementById('monthTotalSalary').innerText = `$${monthSalary.toLocaleString()}`;
-
-      const grid = document.getElementById('calendarGrid');
-      grid.innerHTML = '';
-
-      for (let i = 0; i < firstDay; i++) {
-        grid.innerHTML += `<div class="calendar-day text-slate-700"></div>`;
-      }
-
-      for (let day = 1; day <= daysInMonth; day++) {
-        const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-        const dayLogs = logs.filter(l => l.date === dateStr);
-        const dayTotal = dayLogs.reduce((sum, l) => sum + Number(l.hours), 0);
-
-        const isSelected = dateStr === selectedDateStr;
-        const isToday = dateStr === formatDate(new Date());
-
-        let bgClass = "hover:bg-slate-800 text-slate-300";
-        if (isSelected) bgClass = "bg-blue-600 text-white font-bold ring-2 ring-blue-400";
-        else if (isToday) bgClass = "bg-slate-800 text-blue-400 font-bold border border-blue-500/30";
-
-        let dotHtml = dayTotal > 0 
-          ? `<span class="mt-1 text-[9px] px-1 bg-emerald-500/20 text-emerald-300 rounded font-normal">${dayTotal.toFixed(1)}h</span>` 
-          : `<span class="h-3"></span>`;
-
-        grid.innerHTML += `
-          <div onclick="selectDate('${dateStr}')" class="calendar-day cursor-pointer text-xs ${bgClass}">
-            <span>${day}</span>
-            ${dotHtml}
-          </div>
-        `;
-      }
-    }
-
-    function selectDate(dateStr) {
-      selectedDateStr = dateStr;
-      renderCalendar();
-      renderDayLogs(dateStr);
-    }
-
-    function renderDayLogs(dateStr) {
-      document.getElementById('selectedDateTitle').innerText = `${dateStr} 打卡明細`;
-      const logs = JSON.parse(localStorage.getItem('pt_logs') || '[]');
-      const dayLogs = logs.filter(l => l.date === dateStr);
-      const container = document.getElementById('dayLogList');
-
-      if (dayLogs.length === 0) {
-        container.innerHTML = `<div class="text-slate-500 text-center py-3">當天尚無紀錄</div>`;
-        return;
-      }
-
-      container.innerHTML = dayLogs.map(log => `
-        <div class="flex justify-between items-center p-2.5 bg-slate-800/60 rounded-xl border border-slate-700/50">
-          <div>
-            <div class="font-semibold text-slate-200">${log.time}</div>
-          </div>
-          <div class="flex items-center gap-3">
-            <span class="font-bold text-emerald-400">${log.hours} 小時</span>
-            <button onclick="deleteLog(${log.id})" class="text-slate-500 hover:text-rose-400"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i></button>
-          </div>
-        </div>
-      `).join('');
-      lucide.createIcons();
-    }
-
-    function changeMonth(offset) {
-      currentViewDate.setMonth(currentViewDate.getMonth() + offset);
-      renderCalendar();
-    }
-
-    function clearHistory() {
-      if (confirm("確定要清空所有紀錄嗎？")) {
-        localStorage.removeItem('pt_logs');
-        updateDisplay();
-        renderCalendar();
-        renderDayLogs(selectedDateStr);
-      }
-    }
-
-    // 檢查捷徑自動觸發
-    window.addEventListener('DOMContentLoaded', () => {
-      const urlParams = new URLSearchParams(window.location.search);
-      if (urlParams.get('action') === 'toggle') {
-        toggleClock(true);
-        window.history.replaceState({}, document.title, window.location.pathname);
-      }
-    });
-
-    if (startTime) timerInterval = setInterval(updateDisplay, 1000);
-    updateDisplay();
-    renderCalendar();
-    renderDayLogs(selectedDateStr);
-    lucide.createIcons();
-  </script>
-</body>
-</html>
