@@ -51,6 +51,14 @@
       <div id="timer" class="text-5xl font-black tracking-tight text-white my-2 font-mono">00:00:00</div>
       <p id="todayTotalText" class="text-xs text-slate-400 mt-1">今日累積淨工時：0 小時</p>
 
+      <!-- 修正當前上班時間按鈕 (上班中才會出現) -->
+      <div id="editCurrentStartTimeBox" class="hidden mt-2">
+        <button onclick="openEditCurrentModal()" class="text-xs text-amber-400 hover:text-amber-300 underline font-medium inline-flex items-center gap-1 cursor-pointer">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+          ✏️ 修正今日上班時間 (補簽到)
+        </button>
+      </div>
+
       <button id="clockBtn" onclick="toggleClock()" 
               class="w-full mt-5 py-4 rounded-2xl text-white font-bold text-base shadow-lg transition-all active:scale-95 bg-blue-600 hover:bg-blue-500 flex items-center justify-center gap-2">
         <svg id="clockBtnIcon" class="w-5 h-5 fill-current" viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></svg>
@@ -108,7 +116,7 @@
   <div id="manualModal" class="fixed inset-0 bg-black/70 backdrop-blur-sm hidden flex items-center justify-center p-4 z-50">
     <div class="glass-card w-full max-w-sm rounded-3xl p-6 space-y-4">
       <div class="flex justify-between items-center border-b border-slate-700/50 pb-3">
-        <h3 class="font-bold text-slate-200">手動補打卡</h3>
+        <h3 class="font-bold text-slate-200">手動補過往打卡</h3>
         <button onclick="closeModal()" class="text-slate-400 hover:text-white font-bold p-1">
           <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
         </button>
@@ -135,6 +143,33 @@
       <div class="flex gap-2 pt-2">
         <button onclick="closeModal()" class="w-1/2 py-2.5 rounded-xl bg-slate-800 text-slate-300 font-bold text-xs">取消</button>
         <button onclick="saveManualLog()" class="w-1/2 py-2.5 rounded-xl bg-blue-600 text-white font-bold text-xs">儲存紀錄</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 修正今日上班時間 Modal 彈窗 -->
+  <div id="editCurrentModal" class="fixed inset-0 bg-black/70 backdrop-blur-sm hidden flex items-center justify-center p-4 z-50">
+    <div class="glass-card w-full max-w-sm rounded-3xl p-6 space-y-4">
+      <div class="flex justify-between items-center border-b border-slate-700/50 pb-3">
+        <h3 class="font-bold text-amber-400 flex items-center gap-1.5 text-sm">
+          ✏️ 修正今日上班時間
+        </h3>
+        <button onclick="closeEditCurrentModal()" class="text-slate-400 hover:text-white font-bold p-1">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+
+      <div class="space-y-3 text-xs">
+        <div>
+          <label class="block text-slate-400 mb-1">請選擇實際抵達上班的時間：</label>
+          <input type="time" id="newCurrentStartTimeInput" class="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2.5 text-slate-200 text-base font-mono">
+        </div>
+        <p class="text-[10px] text-slate-400">校正後計時器與今日累積淨工時將即時更新。</p>
+      </div>
+
+      <div class="flex gap-2 pt-2">
+        <button onclick="closeEditCurrentModal()" class="w-1/2 py-2.5 rounded-xl bg-slate-800 text-slate-300 font-bold text-xs">取消</button>
+        <button onclick="confirmEditCurrentStartTime()" class="w-1/2 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs">確認修正</button>
       </div>
     </div>
   </div>
@@ -181,6 +216,7 @@
 
     function showToast(msg) {
       const toast = document.getElementById('toast');
+      if (!toast) return;
       toast.innerText = msg;
       toast.classList.remove('opacity-0');
       setTimeout(() => toast.classList.add('opacity-0'), 2500);
@@ -217,23 +253,32 @@
         .filter(l => l.date === todayStr)
         .reduce((sum, l) => sum + Number(l.hours), 0);
 
+      const statusBadge = document.getElementById('statusBadge');
+      const timer = document.getElementById('timer');
+      const todayTotalText = document.getElementById('todayTotalText');
       const clockBtn = document.getElementById('clockBtn');
       const clockBtnIcon = document.getElementById('clockBtnIcon');
       const clockBtnText = document.getElementById('clockBtnText');
+      const editBox = document.getElementById('editCurrentStartTimeBox');
+
+      if (!statusBadge || !timer || !todayTotalText || !clockBtn) return;
 
       if (!startTime) {
-        document.getElementById('statusBadge').innerHTML = '<span class="w-2 h-2 rounded-full bg-slate-500"></span> 尚未上班';
-        document.getElementById('statusBadge').className = "inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-slate-800 text-slate-400 mb-3";
-        document.getElementById('timer').innerText = "00:00:00";
-        document.getElementById('todayTotalText').innerText = `今日累積淨工時：${todayFinishedHours.toFixed(2)} 小時`;
+        statusBadge.innerHTML = '<span class="w-2 h-2 rounded-full bg-slate-500"></span> 尚未上班';
+        statusBadge.className = "inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-slate-800 text-slate-400 mb-3";
+        timer.innerText = "00:00:00";
+        todayTotalText.innerText = `今日累積淨工時：${todayFinishedHours.toFixed(2)} 小時`;
         
-        clockBtnText.innerText = "上班打卡";
-        clockBtnIcon.setAttribute('viewBox', '0 0 24 24');
-        clockBtnIcon.innerHTML = '<polygon points="5 3 19 12 5 21 5 3"/>';
+        if (editBox) editBox.classList.add('hidden');
+        if (clockBtnText) clockBtnText.innerText = "上班打卡";
+        if (clockBtnIcon) {
+          clockBtnIcon.setAttribute('viewBox', '0 0 24 24');
+          clockBtnIcon.innerHTML = '<polygon points="5 3 19 12 5 21 5 3"/>';
+        }
         clockBtn.className = "w-full mt-5 py-4 rounded-2xl text-white font-bold text-base shadow-lg transition-all active:scale-95 bg-blue-600 hover:bg-blue-500 flex items-center justify-center gap-2";
       } else {
         const now = new Date();
-        const diffSec = Math.floor((now - startTime) / 1000);
+        const diffSec = Math.max(0, Math.floor((now - startTime) / 1000));
         const hrs = String(Math.floor(diffSec / 3600)).padStart(2, '0');
         const mins = String(Math.floor((diffSec % 3600) / 60)).padStart(2, '0');
         const secs = String(diffSec % 60).padStart(2, '0');
@@ -241,15 +286,55 @@
         const currentShiftNetHours = calculateNetHours(startTime, now);
         const totalToday = todayFinishedHours + currentShiftNetHours;
 
-        document.getElementById('statusBadge').innerHTML = `<span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span> 上班中 (${startTime.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})})`;
-        document.getElementById('statusBadge').className = "inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-emerald-950 text-emerald-300 border border-emerald-800/50 mb-3";
-        document.getElementById('timer').innerText = `${hrs}:${mins}:${secs}`;
-        document.getElementById('todayTotalText').innerText = `今日累積淨工時：${totalToday.toFixed(2)} 小時 (已扣午休)`;
+        const startTimeStr = startTime.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+        statusBadge.innerHTML = `<span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span> 上班中 (${startTimeStr})`;
+        statusBadge.className = "inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-emerald-950 text-emerald-300 border border-emerald-800/50 mb-3";
+        timer.innerText = `${hrs}:${mins}:${secs}`;
+        todayTotalText.innerText = `今日累積淨工時：${totalToday.toFixed(2)} 小時 (已扣午休)`;
         
-        clockBtnText.innerText = "下班打卡";
-        clockBtnIcon.setAttribute('viewBox', '0 0 24 24');
-        clockBtnIcon.innerHTML = '<rect x="6" y="6" width="12" height="12" rx="2"/>';
+        if (editBox) editBox.classList.remove('hidden');
+        if (clockBtnText) clockBtnText.innerText = "下班打卡";
+        if (clockBtnIcon) {
+          clockBtnIcon.setAttribute('viewBox', '0 0 24 24');
+          clockBtnIcon.innerHTML = '<rect x="6" y="6" width="12" height="12" rx="2"/>';
+        }
         clockBtn.className = "w-full mt-5 py-4 rounded-2xl text-white font-bold text-base shadow-lg transition-all active:scale-95 bg-rose-600 hover:bg-rose-500 flex items-center justify-center gap-2";
+      }
+    }
+
+    // 修正上班時間 Modal 邏輯
+    function openEditCurrentModal() {
+      if (!startTime) return;
+      const h = String(startTime.getHours()).padStart(2, '0');
+      const m = String(startTime.getMinutes()).padStart(2, '0');
+      const input = document.getElementById('newCurrentStartTimeInput');
+      if (input) input.value = `${h}:${m}`;
+      const modal = document.getElementById('editCurrentModal');
+      if (modal) modal.classList.remove('hidden');
+    }
+
+    function closeEditCurrentModal() {
+      const modal = document.getElementById('editCurrentModal');
+      if (modal) modal.classList.add('hidden');
+    }
+
+    function confirmEditCurrentStartTime() {
+      if (!startTime) return;
+      const inputVal = document.getElementById('newCurrentStartTimeInput').value;
+      if (!inputVal) {
+        alert("請選擇時間！");
+        return;
+      }
+
+      const [newH, newM] = inputVal.split(':').map(Number);
+      if (!isNaN(newH) && !isNaN(newM)) {
+        const newStart = new Date(startTime);
+        newStart.setHours(newH, newM, 0, 0);
+        startTime = newStart;
+        localStorage.setItem('pt_startTime', startTime.toISOString());
+        closeEditCurrentModal();
+        updateDisplay();
+        showToast(`已成功將上班時間修正為 ${inputVal}！`);
       }
     }
 
@@ -264,7 +349,7 @@
         const netHours = calculateNetHours(startTime, endTime).toFixed(2);
 
         const record = {
-          id: Date.now(),
+          id: String(Date.now()),
           date: formatDate(startTime),
           time: `${startTime.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})} ~ ${endTime.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}`,
           hours: netHours
@@ -311,7 +396,7 @@
       }
 
       const record = {
-        id: Date.now(),
+        id: String(Date.now()),
         date: dateVal,
         time: `${startVal} ~ ${endVal}`,
         hours: netHours
@@ -331,19 +416,27 @@
     function deleteLog(id) {
       if (confirm("確定要刪除這筆紀錄嗎？")) {
         let logs = JSON.parse(localStorage.getItem('pt_logs') || '[]');
-        logs = logs.filter(l => l.id !== id);
+        logs = logs.filter(l => String(l.id) !== String(id));
         localStorage.setItem('pt_logs', JSON.stringify(logs));
         updateDisplay();
         renderCalendar();
         renderDayLogs(selectedDateStr);
+        showToast("已刪除該筆打卡紀錄");
       }
     }
 
     function renderCalendar() {
+      const calendarMonthLabel = document.getElementById('calendarMonthLabel');
+      const currentMonthTitle = document.getElementById('currentMonthTitle');
+      const monthTotalHours = document.getElementById('monthTotalHours');
+      const grid = document.getElementById('calendarGrid');
+
+      if (!grid) return;
+
       const year = currentViewDate.getFullYear();
       const month = currentViewDate.getMonth();
-      document.getElementById('calendarMonthLabel').innerText = `${year} 年 ${month + 1} 月`;
-      document.getElementById('currentMonthTitle').innerText = `${month + 1} 月累積淨工時`;
+      if (calendarMonthLabel) calendarMonthLabel.innerText = `${year} 年 ${month + 1} 月`;
+      if (currentMonthTitle) currentMonthTitle.innerText = `${month + 1} 月累積淨工時`;
 
       const firstDay = new Date(year, month, 1).getDay();
       const daysInMonth = new Date(year, month + 1, 0).getDate();
@@ -355,10 +448,11 @@
 
       currentCalculatedSalary = Math.round(monthHours * HOURLY_RATE);
 
-      document.getElementById('monthTotalHours').innerHTML = `${monthHours.toFixed(2)} <span class="text-xs text-slate-300">小時</span>`;
+      if (monthTotalHours) {
+        monthTotalHours.innerHTML = `${monthHours.toFixed(2)} <span class="text-xs text-slate-300">小時</span>`;
+      }
       updateSalaryDisplay();
 
-      const grid = document.getElementById('calendarGrid');
       let gridHtml = '';
 
       for (let i = 0; i < firstDay; i++) {
@@ -399,10 +493,14 @@
     }
 
     function renderDayLogs(dateStr) {
-      document.getElementById('selectedDateTitle').innerText = `${dateStr} 打卡明細`;
+      const selectedDateTitle = document.getElementById('selectedDateTitle');
+      const container = document.getElementById('dayLogList');
+
+      if (!container) return;
+      if (selectedDateTitle) selectedDateTitle.innerText = `${dateStr} 打卡明細`;
+
       const logs = JSON.parse(localStorage.getItem('pt_logs') || '[]');
       const dayLogs = logs.filter(l => l.date === dateStr);
-      const container = document.getElementById('dayLogList');
 
       if (dayLogs.length === 0) {
         container.innerHTML = `<div class="text-slate-500 text-center py-3">當天尚無紀錄</div>`;
@@ -416,8 +514,8 @@
           </div>
           <div class="flex items-center gap-3">
             <span class="font-bold text-emerald-400">${log.hours} 小時</span>
-            <button onclick="deleteLog(${log.id})" class="text-slate-500 hover:text-rose-400 p-1" title="刪除">
-              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+            <button onclick="deleteLog('${log.id}')" class="text-slate-500 hover:text-rose-400 p-1 cursor-pointer" title="刪除">
+              <svg class="w-4 h-4 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
             </button>
           </div>
         </div>
